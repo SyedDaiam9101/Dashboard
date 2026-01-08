@@ -9,6 +9,13 @@
 </head>
 
 <body>
+    <!-- BOOT SEQUENCE OVERLAY -->
+    <div id="bootOverlay" class="boot-overlay">
+        <div class="boot-terminal">
+            <div id="bootText"></div>
+            <div class="cursor">_</div>
+        </div>
+    </div>
     <!-- SETUP SIDEBAR -->
     <div class="setup-modal" id="setupModal">
         <div class="setup-box">
@@ -187,6 +194,15 @@
             <button class="btn" id="refreshAll" style="width: 100%; margin-bottom: 8px;">🔄 <span>Refresh
                     All</span></button>
             <button class="btn" id="btnDownloadLog" style="width: 100%;">💾 <span>Download Logs</span></button>
+
+            <!-- NETWORK GRAPH -->
+            <div class="net-monitor">
+                <div class="net-header">
+                    <span>LATENCY</span>
+                    <span id="netValue">-- ms</span>
+                </div>
+                <canvas id="netGraph"></canvas>
+            </div>
         </aside>
 
         <!-- MAIN CONTENT -->
@@ -196,6 +212,7 @@
                     <h1>Pyramid Surveillance Dashboard</h1>
                     <div class="muted">Network: PyramidNet (192.168.4.x)</div>
                 </div>
+                <div id="clock" class="digital-clock">00:00:00</div>
                 <div class="status-badge">
                     <div class="status-dot"></div>
                     <span id="sysStatus">Loading...</span>
@@ -342,30 +359,16 @@
                             </div>
                         </div>
 
-                        <!-- Camera 4 -->
-                        <div class="cam">
-                            <h3>Sector 4 — WEST</h3>
-                            <div class="cam-frame" id="camFrame4">
-                                <div class="placeholder">
-                                    <div>📷</div>
-                                    <div>Click "Load Stream" to connect</div>
-                                </div>
-                                <iframe src="" data-src="http://192.168.4.5:80/stream" id="stream4"></iframe>
-                                <canvas class="ai-overlay" id="aiOverlay4"></canvas>
-                                <div class="ai-detection-badge" id="aiDetection4" style="display: none;">
-                                    <span class="ai-badge-icon">🎯</span>
-                                    <span class="ai-badge-text">HUMAN DETECTED</span>
-                                </div>
-                                <div class="cam-status">
-                                    <div class="loading"></div> LIVE
-                                </div>
+                        <!-- TACTICAL RADAR (Replaces Cam 4) -->
+                        <div class="cam radar-slot">
+                            <h3>PERIMETER RADAR</h3>
+                            <div class="radar-container">
+                                <canvas id="radarCanvas"></canvas>
+                                <div class="radar-scan"></div>
+                                <div class="radar-grid"></div>
                             </div>
-                            <div class="cam-actions">
-                                <button class="btn btn-power on" id="powerBtn4" onclick="toggleCameraPower(4)">⚡
-                                    ON</button>
-                                <button class="btn" onclick="loadStream(4)">▶ Load</button>
-                                <button class="btn" onclick="openFull('http://192.168.4.5:80/stream')">⛶ Full</button>
-                                <button class="btn" onclick="snapshot(4)">📸 Snap</button>
+                            <div class="cam-status" id="radarStatus" style="margin-top: 15px;">
+                                <div class="loading live"></div> SCANNING ACTIVE
                             </div>
                         </div>
                     </div>
