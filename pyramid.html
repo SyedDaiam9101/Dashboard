@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>🏔️ Pyramid Surveillance Pro</title>
+    <link rel="stylesheet" href="pyramid.css" />
+</head>
+
+<body>
+    <!-- SETUP SIDEBAR -->
+    <div class="setup-modal" id="setupModal">
+        <div class="setup-box">
+            <div class="setup-header">
+                <h1 class="setup-title">🏔️ Setup</h1>
+                <button class="setup-close-btn" onclick="hideSetup()" title="Close">✕</button>
+            </div>
+            <p class="setup-subtitle" id="setupSubtitle">Configure your surveillance system</p>
+
+            <!-- Connection Info for AP Mode -->
+            <div class="connection-info" id="apConnectionInfo" style="display: block;">
+                <div class="connection-info-title">
+                    📡 Quick Setup
+                </div>
+                <div class="connection-info-text">
+                    <strong>Step 1:</strong> Turn on ESP32<br>
+                    <strong>Step 2:</strong> Connect to WiFi network <strong>"PyramidNet"</strong><br>
+                    <strong>Step 3:</strong> Enter password <strong>"Pyramid2024"</strong> (or your custom password)<br>
+                    <strong>Step 4:</strong> Refresh this page<br>
+                    <strong>Step 5:</strong> Choose mode below and configure
+                </div>
+            </div>
+
+            <!-- Not Connected Warning -->
+            <div class="not-connected" id="notConnectedWarning" style="display: none;">
+                <div class="not-connected-icon">📶</div>
+                <div class="not-connected-title">Not Connected to ESP32</div>
+                <div class="not-connected-text">
+                    You need to connect to the ESP32's WiFi network first to access the setup page.
+                </div>
+                <div class="connection-steps">
+                    <strong>Follow these steps:</strong>
+                    <ol>
+                        <li>Turn on your ESP32 device</li>
+                        <li>Look for WiFi network named <strong>"PyramidNet"</strong></li>
+                        <li>Connect to it (default password: <strong>password123</strong>)</li>
+                        <li>Wait a few seconds for connection</li>
+                        <li>Refresh this page</li>
+                    </ol>
+                </div>
+                <button class="setup-btn setup-btn-primary" onclick="location.reload()">
+                    🔄 Refresh Page
+                </button>
+            </div>
+
+            <!-- Mode Selection -->
+            <div class="mode-selector" id="modeSelector">
+                <div class="mode-card" data-mode="ap">
+                    <div class="mode-icon">📡</div>
+                    <div class="mode-name">Access Point</div>
+                    <div class="mode-desc">ESP32 creates WiFi network<br>Connect to "PyramidNet"</div>
+                </div>
+                <div class="mode-card" data-mode="station">
+                    <div class="mode-icon">📶</div>
+                    <div class="mode-name">Station Mode</div>
+                    <div class="mode-desc">Connect to your phone's<br>hotspot/WiFi network</div>
+                </div>
+            </div>
+
+            <!-- AP Mode Form -->
+            <div class="setup-form" id="apForm">
+                <div class="connection-info" style="margin-bottom: 20px;">
+                    <div class="connection-info-title">ℹ️ About AP Mode</div>
+                    <div class="connection-info-text">
+                        In AP mode, ESP32 creates its own WiFi network. Other devices connect to it.
+                        You're currently connected to this network, so you can configure it here.
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">AP SSID (Network Name)</label>
+                    <input type="text" class="form-input" id="apSSID" placeholder="PyramidNet" value="PyramidNet">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                        This is the WiFi network name others will see
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">AP Password</label>
+                    <div class="password-toggle">
+                        <input type="password" class="form-input" id="apPassword"
+                            placeholder="Enter password (min 8 chars)" value="Pyramid2024">
+                        <button type="button" class="password-toggle-btn"
+                            onclick="togglePassword('apPassword')">👁️</button>
+                    </div>
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                        Password for connecting to the AP network (minimum 8 characters)
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">AP IP Address</label>
+                    <input type="text" class="form-input" id="apIP" placeholder="192.168.4.1" value="192.168.4.1">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                        IP address of the ESP32 in AP mode
+                    </small>
+                </div>
+            </div>
+
+            <!-- Station Mode Form -->
+            <div class="setup-form" id="stationForm">
+                <div class="connection-info" style="margin-bottom: 20px;">
+                    <div class="connection-info-title">ℹ️ About Station Mode</div>
+                    <div class="connection-info-text">
+                        In Station mode, ESP32 connects to your phone's hotspot or existing WiFi network.
+                        After configuration, ESP32 will restart and connect to the selected network.
+                        <strong>Make sure your phone's hotspot is ON before proceeding.</strong>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Scan for Networks</label>
+                    <button type="button" class="btn" onclick="scanNetworks()"
+                        style="width: 100%; margin-bottom: 12px;">
+                        🔍 Scan WiFi Networks
+                    </button>
+                    <small style="color: var(--text-muted); font-size: 11px; margin-bottom: 8px; display: block;">
+                        Click to scan for available WiFi networks (make sure hotspot is on)
+                    </small>
+                    <div class="wifi-list" id="wifiList" style="display: none;"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">WiFi SSID (Network Name)</label>
+                    <input type="text" class="form-input" id="stationSSID" placeholder="Your phone's hotspot name">
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                        Enter your phone's hotspot name or select from scanned networks above
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">WiFi Password</label>
+                    <div class="password-toggle">
+                        <input type="password" class="form-input" id="stationPassword"
+                            placeholder="Enter WiFi password">
+                        <button type="button" class="password-toggle-btn"
+                            onclick="togglePassword('stationPassword')">👁️</button>
+                    </div>
+                    <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">
+                        Enter the password for your phone's hotspot
+                    </small>
+                </div>
+            </div>
+
+            <div class="setup-status" id="setupStatus"></div>
+
+            <div class="setup-actions">
+                <button class="setup-btn setup-btn-secondary" onclick="skipSetup()">Skip</button>
+                <button class="setup-btn setup-btn-primary" onclick="saveSetup()">Save & Connect</button>
+            </div>
+        </div>
+    </div>
+    <div class="app">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
+                <span id="toggleIcon">◀</span>
+            </button>
+
+            <div class="logo">
+                <div class="logo-icon">🏔️</div>
+                <div>
+                    <div class="brand">PYRAMID</div>
+                    <div class="muted">Surveillance Pro</div>
+                </div>
+            </div>
+
+            <div class="section-title">Navigation</div>
+            <nav class="nav">
+                <a href="#live">📹 <span>Live Streams</span></a>
+                <a href="#gallery">🖼️ <span>Gallery</span></a>
+                <a href="#logs">📋 <span>Event Logs</span></a>
+            </nav>
+
+            <div class="section-title">System Control</div>
+            <div class="btn-group">
+                <button class="btn btn-success" id="armBtn">🔒 <span>ARM</span></button>
+                <button class="btn btn-danger" id="disarmBtn">🔓 <span>DISARM</span></button>
+            </div>
+
+            <div class="section-title">Actions</div>
+            <button class="btn" id="refreshAll" style="width: 100%; margin-bottom: 8px;">🔄 <span>Refresh
+                    All</span></button>
+            <button class="btn" id="btnDownloadLog" style="width: 100%;">💾 <span>Download Logs</span></button>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="content">
+            <header>
+                <div>
+                    <h1>Pyramid Surveillance Dashboard</h1>
+                    <div class="muted">Network: PyramidNet (192.168.4.x)</div>
+                </div>
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="sysStatus">Loading...</span>
+                </div>
+            </header>
+
+            <!-- TILES -->
+            <section class="tiles">
+                <div class="tile">
+                    <div class="label">System Status</div>
+                    <div class="val" id="tileSystem">—</div>
+                    <div class="sub">Current state</div>
+                </div>
+
+                <div class="tile">
+                    <div class="label">Last Alert</div>
+                    <div class="val" id="tileAlert">—</div>
+                    <div class="sub">Recent activity</div>
+                </div>
+
+                <div class="tile">
+                    <div class="label">Active Camera</div>
+                    <div class="val" id="tileActivity">—</div>
+                    <div class="sub">Currently monitoring</div>
+                </div>
+            </section>
+
+            <div class="grid">
+                <!-- MAIN PANEL -->
+                <div>
+                    <h2 class="section-header" id="live">Live Camera Feeds</h2>
+
+                    <!-- AI Detection Stats -->
+                    <div class="ai-stats-bar">
+                        <div class="ai-stat">
+                            <span class="ai-stat-icon">🧠</span>
+                            <div>
+                                <div class="ai-stat-label">AI Status</div>
+                                <div class="ai-stat-value" id="aiStatus">Offline</div>
+                            </div>
+                        </div>
+                        <div class="ai-stat">
+                            <span class="ai-stat-icon">👤</span>
+                            <div>
+                                <div class="ai-stat-label">Detections Today</div>
+                                <div class="ai-stat-value" id="detectionsToday">0</div>
+                            </div>
+                        </div>
+                        <div class="ai-stat">
+                            <span class="ai-stat-icon">📊</span>
+                            <div>
+                                <div class="ai-stat-label">Confidence Avg</div>
+                                <div class="ai-stat-value" id="confidenceAvg">--</div>
+                            </div>
+                        </div>
+                        <div class="ai-stat">
+                            <span class="ai-stat-icon">⚡</span>
+                            <div>
+                                <div class="ai-stat-label">Last Detection</div>
+                                <div class="ai-stat-value" id="lastDetection">None</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cams">
+                        <!-- Camera 1 -->
+                        <div class="cam">
+                            <h3>Sector 1 — NORTH</h3>
+                            <div class="cam-frame" id="camFrame1">
+                                <div class="placeholder">
+                                    <div>📷</div>
+                                    <div>Click "Load Stream" to connect</div>
+                                </div>
+                                <iframe src="" data-src="http://192.168.4.2:80/stream" id="stream1"></iframe>
+                                <canvas class="ai-overlay" id="aiOverlay1"></canvas>
+                                <div class="ai-detection-badge" id="aiDetection1" style="display: none;">
+                                    <span class="ai-badge-icon">🎯</span>
+                                    <span class="ai-badge-text">HUMAN DETECTED</span>
+                                </div>
+                                <div class="cam-status">
+                                    <div class="loading"></div> LIVE
+                                </div>
+                            </div>
+                            <div class="cam-actions">
+                                <button class="btn btn-power on" id="powerBtn1" onclick="toggleCameraPower(1)">⚡
+                                    ON</button>
+                                <button class="btn" onclick="loadStream(1)">▶ Load</button>
+                                <button class="btn" onclick="openFull('http://192.168.4.2:80/stream')">⛶ Full</button>
+                                <button class="btn" onclick="snapshot(1)">📸 Snap</button>
+                            </div>
+                        </div>
+
+                        <!-- Camera 2 -->
+                        <div class="cam">
+                            <h3>Sector 2 — EAST</h3>
+                            <div class="cam-frame" id="camFrame2">
+                                <div class="placeholder">
+                                    <div>📷</div>
+                                    <div>Click "Load Stream" to connect</div>
+                                </div>
+                                <iframe src="" data-src="http://192.168.4.3:80/stream" id="stream2"></iframe>
+                                <canvas class="ai-overlay" id="aiOverlay2"></canvas>
+                                <div class="ai-detection-badge" id="aiDetection2" style="display: none;">
+                                    <span class="ai-badge-icon">🎯</span>
+                                    <span class="ai-badge-text">HUMAN DETECTED</span>
+                                </div>
+                                <div class="cam-status">
+                                    <div class="loading"></div> LIVE
+                                </div>
+                            </div>
+                            <div class="cam-actions">
+                                <button class="btn btn-power on" id="powerBtn2" onclick="toggleCameraPower(2)">⚡
+                                    ON</button>
+                                <button class="btn" onclick="loadStream(2)">▶ Load</button>
+                                <button class="btn" onclick="openFull('http://192.168.4.3:80/stream')">⛶ Full</button>
+                                <button class="btn" onclick="snapshot(2)">📸 Snap</button>
+                            </div>
+                        </div>
+
+                        <!-- Camera 3 -->
+                        <div class="cam">
+                            <h3>Sector 3 — SOUTH</h3>
+                            <div class="cam-frame" id="camFrame3">
+                                <div class="placeholder">
+                                    <div>📷</div>
+                                    <div>Click "Load Stream" to connect</div>
+                                </div>
+                                <iframe src="" data-src="http://192.168.4.4:80/stream" id="stream3"></iframe>
+                                <canvas class="ai-overlay" id="aiOverlay3"></canvas>
+                                <div class="ai-detection-badge" id="aiDetection3" style="display: none;">
+                                    <span class="ai-badge-icon">🎯</span>
+                                    <span class="ai-badge-text">HUMAN DETECTED</span>
+                                </div>
+                                <div class="cam-status">
+                                    <div class="loading"></div> LIVE
+                                </div>
+                            </div>
+                            <div class="cam-actions">
+                                <button class="btn btn-power on" id="powerBtn3" onclick="toggleCameraPower(3)">⚡
+                                    ON</button>
+                                <button class="btn" onclick="loadStream(3)">▶ Load</button>
+                                <button class="btn" onclick="openFull('http://192.168.4.4:80/stream')">⛶ Full</button>
+                                <button class="btn" onclick="snapshot(3)">📸 Snap</button>
+                            </div>
+                        </div>
+
+                        <!-- Camera 4 -->
+                        <div class="cam">
+                            <h3>Sector 4 — WEST</h3>
+                            <div class="cam-frame" id="camFrame4">
+                                <div class="placeholder">
+                                    <div>📷</div>
+                                    <div>Click "Load Stream" to connect</div>
+                                </div>
+                                <iframe src="" data-src="http://192.168.4.5:80/stream" id="stream4"></iframe>
+                                <canvas class="ai-overlay" id="aiOverlay4"></canvas>
+                                <div class="ai-detection-badge" id="aiDetection4" style="display: none;">
+                                    <span class="ai-badge-icon">🎯</span>
+                                    <span class="ai-badge-text">HUMAN DETECTED</span>
+                                </div>
+                                <div class="cam-status">
+                                    <div class="loading"></div> LIVE
+                                </div>
+                            </div>
+                            <div class="cam-actions">
+                                <button class="btn btn-power on" id="powerBtn4" onclick="toggleCameraPower(4)">⚡
+                                    ON</button>
+                                <button class="btn" onclick="loadStream(4)">▶ Load</button>
+                                <button class="btn" onclick="openFull('http://192.168.4.5:80/stream')">⛶ Full</button>
+                                <button class="btn" onclick="snapshot(4)">📸 Snap</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GALLERY -->
+                    <h2 class="section-header" id="gallery">Captured Images</h2>
+                    <div id="galleryContainer" class="gallery">
+                        <div class="muted">Loading gallery...</div>
+                    </div>
+                </div>
+
+                <!-- SIDE PANEL -->
+                <aside class="side-panel">
+                    <h3 class="section-header">Event Logs</h3>
+                    <div id="logs" class="logs-container">
+                        <div class="log-entry">System initializing...</div>
+                    </div>
+                    <button class="btn" id="btnDownloadLog2" style="width: 100%; margin-top: 16px;">💾 Export
+                        Logs</button>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <!-- FULLSCREEN MODAL -->
+    <div class="modal" id="modal">
+        <div class="modal-box">
+            <button class="close-btn" onclick="closeFull()">✕ CLOSE</button>
+            <iframe id="modalFrame" src=""></iframe>
+        </div>
+    </div>
+
+    <!-- Alert sound -->
+    <audio id="alertSound">
+        <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+    </audio>
+
+    <script src="pyramid.js"></script>
+</body>
+
+</html>
