@@ -4,7 +4,6 @@ const DB_VERSION = 1;
 const STORAGE_LIMIT_MB = 1000; // ~1GB Limit
 
 let db = null;
-// Queue for matching incoming snapshot headers to binary frames
 let pendingSnapshots = [];
 
 /* ====== DYNAMIC IP CONFIGURATION ====== */
@@ -19,8 +18,7 @@ let MAIN_IP = `http://${normalizeIP(MAIN_IP_RAW)}`;
 let CAM_IPS_RAW = JSON.parse(localStorage.getItem('pyramid_cam_ips')) || {
     1: "192.168.4.2:80",
     2: "192.168.4.3:80",
-    3: "192.168.4.4:80",
-    4: "192.168.4.5:80"
+    3: "192.168.4.4:80"
 };
 
 let ws = null;
@@ -60,7 +58,7 @@ function initDB() {
 
         request.onsuccess = (event) => {
             db = event.target.result;
-            console.log('IndexedDB: Persistent Storage System Active (1GB Cap)');
+            // console.log('IndexedDB: Persistent Storage System Active (1GB Cap)');
             resolve(db);
         };
 
@@ -401,7 +399,7 @@ function validateIP(ip) {
 }
 
 function validateCameraID(cam) {
-    return Number.isInteger(cam) && cam >= 1 && cam <= 4;
+    return Number.isInteger(cam) && cam >= 1 && cam <= 3;
 }
 /* ==================================== */
 
@@ -495,7 +493,7 @@ async function safeFetch(url, opts = {}, timeout = 3000) {
 }
 
 // Camera Power States
-const cameraPowerStates = { 1: true, 2: true, 3: true, 4: true };
+const cameraPowerStates = { 1: true, 2: true, 3: true };
 
 // Toggle Camera Power
 async function toggleCameraPower(cam) {
@@ -801,23 +799,23 @@ async function snapshot(cam) {
 
     try {
         // Trigger capture on hardware
-        const res = await safeFetch(ip + "/capture", { method: 'POST' }, 8000);
+        const res = await safeFetch(ip + "/capture", { method: 'GET' }, 8000);
 
-        // For standard ESP32-CAM, /capture usually returns the JPG directly or a JSON status
-        // If it returns the JPG, we can save it to IndexedDB.
-        // Let's also try to get the current stream frame as a backup / improved experience
+        if (res && res.ok) {
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.includes("image")) {
+                // If response is an image, update directly
+                const blob = await res.blob();
 
-        const streamImg = document.getElementById(`stream${cam}`);
-        if (streamImg && streamImg.src) {
-            // Fetch the current image from the stream URL
-            const blobRes = await fetch(ip + "/capture"); // Or /stream if simple
-            const blob = await blobRes.blob();
+                // Save to Local Database!
+                await saveSnapshotToLocal(cam, blob);
 
-            // Save to Local Database!
-            await saveSnapshotToLocal(cam, blob);
-
-            playSound();
-            console.log(`✅ Snapshot from Cam ${cam} saved to LOCAL VAULT`);
+                playSound();
+                // console.log(`✅ Snapshot from Cam ${cam} saved to LOCAL VAULT (optimized)`);
+            } else {
+                // Fallback: If it returns JSON or other status, maybe try fetching stream frame
+                // But for now we assume /capture returns image since we want to avoid double load
+            }
         }
 
         setTimeout(loadGallery, 500);
@@ -959,7 +957,7 @@ function initWebSocket() {
     if (ws) ws.close();
 
     const wsUrl = `ws://${normalizeIP(MAIN_IP_RAW)}:81`;
-    console.log(`Connecting to WebSocket: ${wsUrl}`);
+    // console.log(`Connecting to WebSocket: ${wsUrl}`);
 
     ws = new WebSocket(wsUrl);
     ws.binaryType = 'blob';
@@ -972,7 +970,7 @@ function initWebSocket() {
                 // Snapshot header message (metadata for the next binary frame)
                 if (data.event === 'snapshot_header') {
                     pendingSnapshots.push({ snapshot_id: data.snapshot_id, camId: data.cam_id, ts: data.ts });
-                    console.log('Snapshot header queued:', data.cam_id, data.snapshot_id);
+                    // console.log('Snapshot header queued:', data.cam_id, data.snapshot_id);
                     return;
                 }
 
@@ -981,6 +979,11 @@ function initWebSocket() {
                     document.getElementById("tileAlert").innerText = data.log || "NONE";
                     document.getElementById("tileActivity").innerText = data.prox > 0 ? `OBJ @ ${data.prox}cm` : "CLEAR";
                     document.getElementById("sysStatus").innerText = data.armed ? "🔒 ARMED" : "🔓 DISARMED";
+
+                    // Update Radar
+                    if (data.prox && RadarSystem) {
+                        RadarSystem.updateTarget(data.prox);
+                    }
 
                     // If there's a fresh log entry in the websocket
                     if (data.log && data.log !== "KERNEL_BOOT") {
@@ -1001,7 +1004,7 @@ function initWebSocket() {
                 let camId = header ? header.camId : 1;
                 try {
                     await saveSnapshotToLocal(camId, blob);
-                    console.log(`Saved auto-snapshot from Cam ${camId} to IndexedDB`);
+                    // console.log(`Saved auto-snapshot from Cam ${camId} to IndexedDB`);
                     playSound();
                     // Refresh gallery to show the new image
                     setTimeout(loadGallery, 200);
@@ -1015,7 +1018,7 @@ function initWebSocket() {
     };
 
     ws.onopen = () => {
-        console.log("WebSocket connected");
+        // console.log("WebSocket connected");
         document.getElementById("sysStatus").innerText = "CONNECTED";
 
         // Update AI status to Active when connected
@@ -1024,10 +1027,13 @@ function initWebSocket() {
             aiStatus.textContent = 'Active';
             aiStatus.style.color = 'var(--success)';
         }
+
+        // Radar Online
+        if (RadarSystem) RadarSystem.setOnline(true);
     };
 
     ws.onclose = () => {
-        console.log("WebSocket closed. Retrying...");
+        // console.log("WebSocket closed. Retrying...");
 
         // Update AI status to Offline when disconnected
         const aiStatus = document.getElementById('aiStatus');
@@ -1035,6 +1041,9 @@ function initWebSocket() {
             aiStatus.textContent = 'Offline';
             aiStatus.style.color = 'var(--text-muted)';
         }
+
+        // Radar Offline
+        if (RadarSystem) RadarSystem.setOnline(false);
 
         setTimeout(initWebSocket, 5000);
     };
@@ -1070,7 +1079,7 @@ const AIDetection = {
 
     // Initialize AI detection system
     init() {
-        console.log('AI Detection System: Initialized');
+        // console.log('AI Detection System: Initialized');
         this.loadTodayStats();
         this.setupWebSocketListener();
         // Set initial status to Offline until WebSocket connects
@@ -1160,7 +1169,7 @@ const AIDetection = {
 
         // New: Automatic Snapshot Trigger
         if (data.auto_snap) {
-            console.log(`📸 AI AUTO-SNAPSHOT: Triggering capture for Cam ${camId}`);
+            // console.log(`📸 AI AUTO-SNAPSHOT: Triggering capture for Cam ${camId}`);
             snapshot(camId);
         }
 
@@ -1173,7 +1182,7 @@ const AIDetection = {
             }
         }, 5000);
 
-        console.log(`AI Detection: Camera ${camId} - Confidence: ${(confidence * 100).toFixed(1)}%`);
+        // console.log(`AI Detection: Camera ${camId} - Confidence: ${(confidence * 100).toFixed(1)}%`);
     },
 
     // Show detection badge on camera
@@ -1370,4 +1379,277 @@ setInterval(() => {
 // Expose to global scope for debugging
 window.AIDetection = AIDetection;
 
-console.log('AI Object Recognition Module: Loaded');
+// console.log('AI Object Recognition Module: Loaded');
+
+/* ====== BOOT SEQUENCE & CLOCK ====== */
+function startClock() {
+    const clock = document.getElementById('clock');
+    if (!clock) return;
+
+    function update() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        clock.innerText = `${h}:${m}:${s}`;
+    }
+    update();
+    setInterval(update, 1000);
+}
+
+function typeLine(text, element, speed = 30) {
+    return new Promise(resolve => {
+        let i = 0;
+        const line = document.createElement('div');
+        line.className = 'boot-text-line';
+        element.appendChild(line);
+
+        function type() {
+            if (i < text.length) {
+                line.style.borderRight = '10px solid var(--success)';
+                line.innerText += text.charAt(i);
+                i++;
+                setTimeout(type, speed);
+            } else {
+                line.style.borderRight = 'none';
+                resolve();
+            }
+        }
+        type();
+    });
+}
+
+function initBootSequence() {
+    // Only run if not skipped session-wise (optional, but good for UX)
+    // For now, always run to "cook" the teacher
+    const overlay = document.getElementById('bootOverlay');
+    const textContainer = document.getElementById('bootText');
+
+    if (!overlay || !textContainer) return;
+
+    const sequence = [
+        "Initializing Pyramid Kernel v4.2...",
+        "Loading Neural Modules... [OK]",
+        "Connecting to Satellite Uplink... [ESTABLISHED]",
+        "Decrypting Secure Vault... [SUCCESS]",
+        "ACCESS GRANTED"
+    ];
+
+    async function run() {
+        for (const line of sequence) {
+            await typeLine(line, textContainer, 20 + Math.random() * 30);
+            await new Promise(r => setTimeout(r, 100 + Math.random() * 300));
+        }
+
+        await new Promise(r => setTimeout(r, 500));
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 1000);
+    }
+
+    run();
+}
+
+/* ====== NETWORK GRAPH ====== */
+function initNetGraph() {
+    const canvas = document.getElementById('netGraph');
+    const valDisplay = document.getElementById('netValue');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const history = new Array(30).fill(0); // 30 data points
+    let maxLatency = 200; // default max scale
+
+    // Resize canvas for high DPI
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
+    ctx.scale(2, 2);
+
+    function draw() {
+        ctx.clearRect(0, 0, rect.width, rect.height);
+
+        ctx.beginPath();
+        ctx.moveTo(0, rect.height - (history[0] / maxLatency) * rect.height);
+
+        for (let i = 1; i < history.length; i++) {
+            const x = (i / (history.length - 1)) * rect.width;
+            const y = rect.height - (history[i] / maxLatency) * rect.height;
+            ctx.lineTo(x, y);
+        }
+
+        ctx.strokeStyle = '#58a6ff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Fill area
+        ctx.lineTo(rect.width, rect.height);
+        ctx.lineTo(0, rect.height);
+        ctx.fillStyle = 'rgba(88, 166, 255, 0.1)';
+        ctx.fill();
+    }
+
+    async function ping() {
+        const start = performance.now();
+        try {
+            // Ping status endpoint
+            // If offline, this will throw or return late
+            await safeFetch(MAIN_IP + "/status", { method: 'HEAD' }, 1000);
+            const duration = Math.round(performance.now() - start);
+
+            valDisplay.innerText = `${duration} ms`;
+            history.push(duration);
+            history.shift();
+
+            // Dynamic scale
+            maxLatency = Math.max(200, ...history);
+        } catch (e) {
+            // Timeout or error (Offline)
+            valDisplay.innerText = "TIMEOUT";
+            valDisplay.style.color = "var(--danger)";
+            history.push(maxLatency); // Spike graph
+            history.shift();
+        }
+        draw();
+    }
+
+    // Ping every 2 seconds
+    setInterval(ping, 2000);
+    draw(); // Initial draw
+}
+
+
+/* ====== TACTICAL RADAR SYSTEM ====== */
+const RadarSystem = {
+    canvas: null,
+    ctx: null,
+    width: 200,
+    height: 200,
+    blips: [],
+    lastProxUpdate: 0,
+    scanAngle: 0,
+
+    init() {
+        this.canvas = document.getElementById('radarCanvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+        this.render();
+    },
+
+    // Called when WebSocket receives proximity data
+    // distance is in cm
+    updateTarget(distance) {
+        if (!distance || distance <= 0 || distance > 200) return;
+
+        // Debounce slightly to avoid blip spam, but keep it responsive
+        // Only add one blip per scan rotation or timer might be better, 
+        // but for now let's just push blips that fade.
+
+        // Map distance (0-100cm mostly) to radius (0-100px)
+        // Max range to show on radar: 150cm
+        const maxRangeCm = 150;
+        const maxRadius = this.width / 2;
+
+        // Calculate radius: Closer is closer to center? 
+        // Typically radar: Center is YOU. Target is away.
+        // So 10cm = close to center. 150cm = edge.
+        let radius = (distance / maxRangeCm) * maxRadius;
+        if (radius > maxRadius) radius = maxRadius;
+
+        // Add a blip at a somewhat random angle "in front" (North)
+        // Simulate a cone of detection since ultrasonic is directional (~15 degrees)
+        // -30 to +30 degrees from North (-90 deg in canvas space)
+        const spread = 30 * (Math.PI / 180);
+        const baseAngle = -Math.PI / 2; // North
+        const angle = baseAngle + (Math.random() * spread - spread / 2);
+
+        this.blips.push({
+            x: (this.width / 2) + Math.cos(angle) * radius,
+            y: (this.height / 2) + Math.sin(angle) * radius,
+            life: 1.0,
+            size: 3 + Math.random() * 2,
+            type: 'REAL'
+        });
+    },
+
+    render() {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+        const center = { x: this.width / 2, y: this.height / 2 };
+
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        // Draw Blips
+        for (let i = this.blips.length - 1; i >= 0; i--) {
+            const blip = this.blips[i];
+
+            ctx.beginPath();
+            ctx.arc(blip.x, blip.y, blip.size, 0, Math.PI * 2);
+
+            // Color: Real targets are bright red/orange, noise is blueish
+            if (blip.type === 'REAL') {
+                ctx.fillStyle = `rgba(255, 50, 50, ${blip.life})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'red';
+            } else {
+                ctx.fillStyle = `rgba(88, 166, 255, ${blip.life})`;
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.fill();
+            ctx.shadowBlur = 0; // Reset
+
+            // Pulse ring for real targets
+            if (blip.type === 'REAL') {
+                ctx.beginPath();
+                ctx.arc(blip.x, blip.y, blip.size * (3 - blip.life * 2), 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 50, 50, ${blip.life * 0.5})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+
+            blip.life -= 0.02; // Fade speed
+            if (blip.life <= 0) {
+                this.blips.splice(i, 1);
+            }
+        }
+
+        requestAnimationFrame(() => this.render());
+    },
+
+    setOnline(isOnline) {
+        const el = document.getElementById('radarStatus');
+        const scan = document.querySelector('.radar-scan');
+
+        if (el) {
+            if (isOnline) {
+                el.innerHTML = '<div class="loading live"></div> SCANNING ACTIVE';
+                el.style.color = 'var(--text)';
+            } else {
+                el.innerHTML = '<div class="loading"></div> OFFLINE';
+                el.style.color = 'var(--text-muted)';
+            }
+        }
+
+        if (scan) {
+            scan.style.display = isOnline ? 'block' : 'none';
+        }
+
+        // Clear blips if offline
+        if (!isOnline) {
+            this.blips = [];
+        }
+    }
+};
+
+window.addEventListener('DOMContentLoaded', () => {
+    initBootSequence();
+    startClock();
+    initNetGraph();
+    RadarSystem.init();
+});
+
+
